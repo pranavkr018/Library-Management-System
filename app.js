@@ -1,7 +1,7 @@
 import express from "express";
 import * as bookService from "./services/bookService.js";
 import bookRoutes from "./routes/bookRoutes.js";
-import errorHandler from "./middlewares/errorHandler.js";
+import errorHandler from "./middleware/errorHandler.js";
 
 const app = express();
 
