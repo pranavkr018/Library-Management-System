@@ -1,0 +1,23 @@
+[
+  {
+    "id": 1,
+    "userId": 2,
+    "bookId": 31,
+    "borrowedAt": "2026-08-20T07:37:57.148Z",
+    "returnedAt": "2026-08-21T04:14:44.146Z"
+  },
+  {
+    "id": 2,
+    "userId": 2,
+    "bookId": 28,
+    "borrowedAt": "2026-08-20T18:51:27.498Z",
+    "returnedAt": "2026-08-21T04:14:40.246Z"
+  },
+  {
+    "id": 3,
+    "userId": 2,
+    "bookId": 24,
+    "borrowedAt": "2026-08-20T18:51:40.885Z",
+    "returnedAt": "2026-08-21T04:14:09.642Z"
+  }
+]

@@ -1,0 +1,14 @@
+[
+  {
+    "id": 1,
+    "username": "pranav",
+    "passwordHash": "$2b$10$APlyfx60f3n0ASuRfE8ApOE3JtoW6wEB6YKzULn6C0WaZq7DvSKTK",
+    "role": "admin"
+  },
+  {
+    "id": 2,
+    "username": "pranavkr018",
+    "passwordHash": "$2b$10$huyKNxefvmVRUaCZ5426W.9KRPIIPuzoPi7eiNWSuJPOyPgoDhwnG",
+    "role": "user"
+  }
+]

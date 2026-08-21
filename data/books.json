@@ -5,7 +5,7 @@
     "author": "Robert C. Martin",
     "category": "Programming",
     "totalCopies": 8,
-    "availableCopies": 5
+    "availableCopies": 4
   },
   {
     "id": 2,
@@ -53,7 +53,7 @@
     "author": "Abraham Silberschatz",
     "category": "Database",
     "totalCopies": 11,
-    "availableCopies": 8
+    "availableCopies": 7
   },
   {
     "id": 8,
@@ -208,14 +208,6 @@
     "availableCopies": 3
   },
   {
-    "id": 27,
-    "title": "The Art of War",
-    "author": "Sun Tzu",
-    "category": "Strategy",
-    "totalCopies": 12,
-    "availableCopies": 10
-  },
-  {
     "id": 28,
     "title": "Zero to One",
     "author": "Peter Thiel",
@@ -237,6 +229,14 @@
     "author": "Daniel Kahneman",
     "category": "Psychology",
     "totalCopies": 14,
+    "availableCopies": 11
+  },
+  {
+    "id": 31,
+    "title": "The Art of War",
+    "author": "Sun Tzu",
+    "category": "Strategy",
+    "totalCopies": 13,
     "availableCopies": 11
   }
 ]

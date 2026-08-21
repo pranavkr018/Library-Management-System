@@ -35,10 +35,17 @@ function sanitizeBook(book){
 }
 
 function findDuplicateBook(books, book, currId){
-    return books.find(b => b.id !== currId && normalize(b.title) === normalize(book.title) && normalize(b.author) === normalize(book.author) && normalize(b.category) === normalize(book.category));
+    return books.find(b => b.id !== currId 
+        && normalize(b.title) === normalize(book.title) 
+        && normalize(b.author) === normalize(book.author) 
+        && normalize(b.category) === normalize(book.category)
+    );
 }
 
 function validateBook(book){
+    // if(book.id)
+    //     throw new ValidationError("Id cannot be created by user.")
+
     if(typeof book.title !== "string" || book.title.trim().length === 0)
         throw new ValidationError("Title is required.");
     
@@ -132,7 +139,7 @@ async function getAllBooks(filters){
 async function addBook(book){
     validateBook(book);
     
-    const books = await readJSON(BOOK_FILE_PATH);;
+    const books = await readJSON(BOOK_FILE_PATH);
 
     const existingBook = findDuplicateBook(books, book);
 
@@ -146,8 +153,11 @@ async function addBook(book){
     }
     
     const newBook = sanitizeBook({
-        ...book,
         id: generateId(books),
+        title: book.title,
+        author: book.author,
+        category: book.category,
+        totalCopies: book.totalCopies,
         availableCopies: book.totalCopies
     });
 
@@ -178,7 +188,7 @@ async function updateBook(id, updatedData){
     validateId(id);
     validateUpdateData(updatedData);
 
-    const books = await readJSON(BOOK_FILE_PATH);;
+    const books = await readJSON(BOOK_FILE_PATH);
     const targetBook = books.find(book => book.id === id);    // not using findBookById() because we want the reference of the target book in books, not a copy of the target book.
 
     if(!targetBook)
@@ -186,7 +196,7 @@ async function updateBook(id, updatedData){
 
     const updatedBook = sanitizeBook({
         ...targetBook, 
-        ...updatedData
+        ...updatedData,
     });
 
     validateBook(updatedBook);
