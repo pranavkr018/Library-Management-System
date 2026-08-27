@@ -43,9 +43,6 @@ function findDuplicateBook(books, book, currId){
 }
 
 function validateBook(book){
-    // if(book.id)
-    //     throw new ValidationError("Id cannot be created by user.")
-
     if(typeof book.title !== "string" || book.title.trim().length === 0)
         throw new ValidationError("Title is required.");
     
@@ -115,7 +112,7 @@ async function getAllBooks(filters){
         throw new BusinessRuleError(`Cannot sort on "${filters.sortBy}". Available sortBy options: title, author, category, totalCopies.`)
     }
 
-    const order = filters.order?.toLowerCase() ?? "asc";
+    const order = filters.order.toLowerCase();
 
     if(!["asc", "desc"].includes(order)){
         throw new BusinessRuleError(`Cannot sort in "${filters.order}" order! Available order options: asc, desc.`);

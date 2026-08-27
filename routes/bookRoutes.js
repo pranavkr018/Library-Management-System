@@ -10,6 +10,12 @@ const router = express.Router();
 router.get(
     "/",
     asyncHandler(bookController.getAllBooks)
+);  
+
+router.get(
+    "/borrowings",
+    authMiddleware,
+    asyncHandler(bookController.getBorrowings)
 );
 
 router.get(

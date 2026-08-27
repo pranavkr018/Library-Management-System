@@ -1,5 +1,5 @@
 import * as bookService from "../services/bookService.js";
-import * as borrowingService from "../services/borowingService.js";
+import * as borrowingService from "../services/borrowingService.js";
 
 
 async function getAllBooks(req, res){
@@ -63,6 +63,23 @@ async function returnBook(req, res){
     res.status(200).json(returnedRecord);
 }
 
+async function getBorrowings(req, res){
+    const userId = req.user.id;
+    const role = req.user.role;
+    const filters = {
+        ...req.query,
+        borrowerId: role === "user" ? userId : Number(req.query.borrowerId),
+        sortBy: req.query.sortBy ?? "borrowedAt",
+        order: req.query.order ?? "asc",
+        page: Number(req.query.page ?? 1),
+        limit: Number(req.query.limit ?? 10)
+    };
+
+    const borrowingHistory = await borrowingService.getBorrowings(userId, role, filters);
+
+    res.status(200).json(borrowingHistory);
+}
 
 
-export {getAllBooks, getBookById, createBook, updateBook, deleteBook, borrowBook, returnBook};
+
+export {getAllBooks, getBookById, createBook, updateBook, deleteBook, borrowBook, returnBook, getBorrowings};

@@ -19,5 +19,12 @@
     "bookId": 24,
     "borrowedAt": "2026-08-20T18:51:40.885Z",
     "returnedAt": "2026-08-21T04:14:09.642Z"
+  },
+  {
+    "id": 4,
+    "userId": 2,
+    "bookId": 26,
+    "borrowedAt": "2026-08-26T10:22:06.071Z",
+    "returnedAt": null
   }
 ]
