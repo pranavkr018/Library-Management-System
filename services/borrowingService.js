@@ -195,9 +195,23 @@ async function getBorrowings(userId, role, filters){
     });
 
     //pagination
+    const total = borrowingHistory.length;
+
+    const totalPages = Math.ceil(total / limit);
+
     const offset = (page - 1) * limit;
 
-    return borrowingHistory.slice(offset, offset + limit);
+    const data = borrowingHistory.slice(offset, offset + limit);
+
+    return {
+        data,
+        pagination: {
+            page,
+            limit,
+            total,
+            totalPages
+        }
+    };
 }
 
 

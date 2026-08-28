@@ -106,10 +106,10 @@ async function getAllBooks(filters){
     //sorting
     const sortBy = filters.sortBy.toLowerCase();
 
-    const validSortFields = ["title", "author", "category", "totalcopies"];
+    const validSortFields = ["title", "author", "category", "totalcopies", "availablecopies"];
 
     if(!validSortFields.includes(sortBy)){
-        throw new BusinessRuleError(`Cannot sort on "${filters.sortBy}". Available sortBy options: title, author, category, totalCopies.`)
+        throw new BusinessRuleError(`Cannot sort on "${filters.sortBy}". Available sortBy options: title, author, category, totalCopies, availablecopies.`)
     }
 
     const order = filters.order.toLowerCase();
@@ -123,13 +123,31 @@ async function getAllBooks(filters){
             return order === "asc" ? book1.totalCopies - book2.totalCopies : book2.totalCopies - book1.totalCopies;
         }
 
+        if(sortBy === "availablecopies"){
+            return order === "asc" ? book1.availableCopies - book2.availableCopies : book2.availableCopies - book1.availableCopies;
+        }
+
         return order === "asc" ? book1[sortBy].localeCompare(book2[sortBy]) : book2[sortBy].localeCompare(book1[sortBy]);
     });
 
     //paginating
+    const total = filteredBooks.length;
+    
+    const totalPages = Math.ceil(total / limit);
+
     const offset = (page-1) * limit;
 
-    return filteredBooks.slice(offset, offset + limit);
+    const data = filteredBooks.slice(offset, offset + limit);
+
+    return {
+        data,
+        pagination: {
+            page,
+            limit,
+            total,
+            totalPages
+        }
+    };
 }
 
 //Add a Book
