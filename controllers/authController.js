@@ -6,8 +6,8 @@ async function register(req, res){
     res.status(201).json(user);
 }
 
-async function login(reqq, res){
-    const user = await authService.loginUser(reqq.body);
+async function login(req, res){
+    const user = await authService.loginUser(req.body);
     res.status(200).json(user);
 }
 

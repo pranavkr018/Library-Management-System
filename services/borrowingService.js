@@ -1,10 +1,12 @@
 import path from "path";
 import { readJSON, writeJSON } from "../utils/fileHelper.js";
 
+import pool from "../utils/db.js"
+
 import ValidationError from "../errors/ValidationError.js";
 import NotFoundError from "../errors/NotFoundError.js";
 import BusinessRuleError from "../errors/BusinessRuleError.js";
-import { rejects } from "assert";
+import AuthorizationError from "../errors/AuthorizationError.js";
 
 const BOOK_FILE_PATH = path.resolve("data", "books.json");
 const BORROWING_FILE_PATH = path.resolve("data", "borrowings.json");
@@ -18,22 +20,18 @@ function validateId(id, fieldName){
         throw new ValidationError(`${fieldName} must be a positive integer.`);
 }
 
-function generateId(borrowings){
-    if(borrowings.length === 0)  return 1;
-    return Math.max(...borrowings.map(borrowing => borrowing.id)) + 1;
-}
+// function generateId(borrowings){
+//     if(borrowings.length === 0)  return 1;
+//     return Math.max(...borrowings.map(borrowing => borrowing.id)) + 1;
+// }
 
-function findBook(books, id){
-    return books.find(book => book.id === id);
-}
-
-function findActiveBorrowing(borrowings, bookId, userId){
-    return borrowings.find(borrowing =>
-        borrowing.bookId === bookId &&
-        borrowing.userId === userId &&
-        borrowing.returnedAt === null
-    );
-}
+// function findActiveBorrowingByBookId(borrowings, bookId, userId){
+//     return borrowings.find(borrowing =>
+//         borrowing.bookId === bookId &&
+//         borrowing.userId === userId &&
+//         borrowing.returnedAt === null
+//     );
+// }
 
 function validatePageAndLimit(page, limit){
     if(!Number.isInteger(page) || page < 1)
@@ -54,55 +52,122 @@ async function borrowBook(bookId, userId){
     validateId(bookId, "Book Id");
     validateId(userId, "User Id");
 
-    const borrowings = await readJSON(BORROWING_FILE_PATH);
+    const client = await pool.connect();
 
-    if(findActiveBorrowing(borrowings, bookId, userId))
-        throw new BusinessRuleError("A user cannot have multiple active borrowings of the same book.");
+    try{
+        await client.query("BEGIN");
+
+        const bookResults = await client.query(
+            `SELECT * FROM books WHERE id = $1 FOR UPDATE`, 
+            [bookId]
+        );
+
+        if(bookResults.rows.length === 0){
+            throw new NotFoundError("Book not found.");
+        }
+
+        const book = bookResults.rows[0];
+
+        if(book.available_copies === 0){
+            throw new BusinessRuleError("No copies are available to borrow.");
+        }
+
+        const borrowingCheck = await client.query(
+            `SELECT EXISTS (SELECT 1 FROM borrowings WHERE user_id = $1 AND book_id = $2 AND returned_at IS NULL)`, 
+            [userId, bookId]
+        );
+
+        if(borrowingCheck.rows[0].exists){
+            throw new BusinessRuleError(
+                "A user cannot have multiple active borrowings of the same book."
+            );
+        }
+
+        await client.query(
+            `UPDATE books SET available_copies = available_copies - 1 WHERE id = $1`, 
+            [bookId]
+        );
+
+        const borrowingResult = await client.query(
+            `INSERT INTO borrowings (user_id, book_id, borrowed_at) VALUES ($1, $2, NOW()) RETURNING *`, 
+            [userId, bookId]
+        );
+
+        await client.query("COMMIT");
+
+        return borrowingResult.rows[0];
+    }
+    catch(error){
+        await client.query("ROLLBACK");
+
+        throw error;
+    }
+    finally{
+        client.release();
+    }
+
+    //JSON persistence
+    // const borrowings = await readJSON(BORROWING_FILE_PATH);
+
+    // if(findActiveBorrowingByBookId(borrowings, bookId, userId))
+    //     throw new BusinessRuleError("A user cannot have multiple active borrowings of the same book.");
 
     
-    const books = await readJSON(BOOK_FILE_PATH);
+    // const books = await readJSON(BOOK_FILE_PATH);
 
-    const book = findBook(books, bookId);
+    // const book = books.find(book => book.id === bookId);
 
-    if(!book)
-        throw new NotFoundError("Book not found.");
+    // if(!book)
+    //     throw new NotFoundError("Book not found.");
 
-    if(book.availableCopies === 0)
-        throw new BusinessRuleError("No copies are available to borrow.");
+    // if(book.availableCopies === 0)
+    //     throw new BusinessRuleError("No copies are available to borrow.");
 
 
-    const borrowingRecord = {
-        id: generateId(borrowings),
-        userId: userId,
-        bookId: bookId,
-        borrowedAt: new Date().toISOString(),
-        returnedAt: null
-    };
+    // const borrowingRecord = {
+    //     id: generateId(borrowings),
+    //     userId: userId,
+    //     bookId: bookId,
+    //     borrowedAt: new Date().toISOString(),
+    //     returnedAt: null
+    // };
 
-    borrowings.push(borrowingRecord);
+    // borrowings.push(borrowingRecord);
 
-    book.availableCopies--;
+    // book.availableCopies--;
 
-    await writeJSON(BORROWING_FILE_PATH, borrowings);
-    await writeJSON(BOOK_FILE_PATH, books);
+    // await writeJSON(BORROWING_FILE_PATH, borrowings);
+    // await writeJSON(BOOK_FILE_PATH, books);
 
-    return borrowingRecord;
+    // return borrowingRecord;
 }
 
 
-async function returnBook(bookId, userId){
-    validateId(bookId, "Book Id");
+
+async function returnBook(borrowingId, userId){
+    validateId(borrowingId, "Borrowing Id");
     validateId(userId, "User Id");
 
     const borrowings = await readJSON(BORROWING_FILE_PATH);
-    const books = await readJSON(BOOK_FILE_PATH);
-
-    const borrowRecord = findActiveBorrowing(borrowings, bookId, userId);
+    
+    const borrowRecord = borrowings.find(borrowing => borrowing.id === borrowingId);
 
     if(!borrowRecord)
-        throw new BusinessRuleError("Cannot return an unborrowed book.");
-    
-    const book = findBook(books, bookId);
+        throw new NotFoundError("Borrowing record not found.");
+
+    if(borrowRecord.userId !== userId)
+        throw new AuthorizationError("You are unauthorized to close this borrowing.")
+
+    if(borrowRecord.returnedAt !== null)
+        throw new BusinessRuleError("Book already returned.")
+
+
+    const books = await readJSON(BOOK_FILE_PATH);
+
+    const book = books.find(book => book.id === borrowRecord.bookId);
+
+    if(!book)
+        throw new NotFoundError("Book associated with borrowing not found.");
 
     borrowRecord.returnedAt = new Date().toISOString();
 
@@ -114,8 +179,9 @@ async function returnBook(bookId, userId){
     return borrowRecord;
 }
 
-async function getBorrowings(userId, role, filters){
-    validateId(userId, "User Id");
+
+
+async function getBorrowings(role, filters){
     role = role.toLowerCase();
     
     if(role !== "user" && role !== "admin")
