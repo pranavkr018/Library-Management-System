@@ -6,6 +6,7 @@ import pool from "../utils/db.js"
 import ValidationError from "../errors/ValidationError.js";
 import NotFoundError from "../errors/NotFoundError.js";
 import BusinessRuleError from "../errors/BusinessRuleError.js";
+import ConflictError from "../errors/ConflictError.js";
 import AuthorizationError from "../errors/AuthorizationError.js";
 
 const BOOK_FILE_PATH = path.resolve("data", "books.json");
@@ -57,16 +58,16 @@ async function borrowBook(bookId, userId){
     try{
         await client.query("BEGIN");
 
-        const bookResults = await client.query(
+        const bookResult = await client.query(
             `SELECT * FROM books WHERE id = $1 FOR UPDATE`, 
             [bookId]
         );
 
-        if(bookResults.rows.length === 0){
+        if(bookResult.rows.length === 0){
             throw new NotFoundError("Book not found.");
         }
 
-        const book = bookResults.rows[0];
+        const book = bookResult.rows[0];
 
         if(book.available_copies === 0){
             throw new BusinessRuleError("No copies are available to borrow.");
@@ -99,6 +100,10 @@ async function borrowBook(bookId, userId){
     }
     catch(error){
         await client.query("ROLLBACK");
+
+        if(error.code === "23505" && error.constraint === "unique_active_borrowing"){    // UNIQUE INDEX violation
+            throw new ConflictError("An active borrowing for this book already exists.");
+        }
 
         throw error;
     }
@@ -148,41 +153,104 @@ async function returnBook(borrowingId, userId){
     validateId(borrowingId, "Borrowing Id");
     validateId(userId, "User Id");
 
-    const borrowings = await readJSON(BORROWING_FILE_PATH);
+    const client = await pool.connect();
+
+    try{
+        await client.query("BEGIN");
+
+        const borrowingResult = await client.query(
+            `SELECT * FROM borrowings WHERE id = $1 FOR UPDATE`,
+            [borrowingId]
+        );
+
+        if(borrowingResult.rows.length === 0){
+            throw new NotFoundError("Borrowing record not found.");
+        }
+
+        const borrowing = borrowingResult.rows[0];
+        
+        if(borrowing.user_id !== userId){
+            throw new AuthorizationError("You are unauthorized to close this borrowing.")
+        }
+
+        if(borrowing.returned_at !== null){
+            throw new BusinessRuleError("Book already returned.")
+        }
+
+        const bookResult = await client.query(
+            `SELECT * FROM books WHERE id = $1 FOR UPDATE`,
+            [borrowing.book_id]
+        );
+
+        if(bookResult.rows.length === 0){
+            throw new NotFoundError("Book not found.");
+        }
+
+        const borrowingUpdate = await client.query(
+            `UPDATE borrowings SET returned_at = NOW() WHERE id = $1 RETURNING *`, 
+            [borrowingId]
+        );
+
+        await client.query(
+            `UPDATE books SET available_copies = available_copies + 1 WHERE id = $1`, 
+            [borrowing.book_id]
+        );
+
+        await client.query("COMMIT");
+
+        return borrowingUpdate.rows[0];
+    }
+    catch(error){
+        await client.query("ROLLBACK");
+
+        throw error;
+    }
+    finally{
+        client.release();
+    }
+
+    //JSON persistence
+    // const borrowings = await readJSON(BORROWING_FILE_PATH);
     
-    const borrowRecord = borrowings.find(borrowing => borrowing.id === borrowingId);
+    // const borrowRecord = borrowings.find(borrowing => borrowing.id === borrowingId);
 
-    if(!borrowRecord)
-        throw new NotFoundError("Borrowing record not found.");
+    // if(!borrowRecord)
+    //     throw new NotFoundError("Borrowing record not found.");
 
-    if(borrowRecord.userId !== userId)
-        throw new AuthorizationError("You are unauthorized to close this borrowing.")
+    // if(borrowRecord.userId !== userId)
+    //     throw new AuthorizationError("You are unauthorized to close this borrowing.")
 
-    if(borrowRecord.returnedAt !== null)
-        throw new BusinessRuleError("Book already returned.")
+    // if(borrowRecord.returnedAt !== null)
+    //     throw new BusinessRuleError("Book already returned.")
 
 
-    const books = await readJSON(BOOK_FILE_PATH);
+    // const books = await readJSON(BOOK_FILE_PATH);
 
-    const book = books.find(book => book.id === borrowRecord.bookId);
+    // const book = books.find(book => book.id === borrowRecord.bookId);
 
-    if(!book)
-        throw new NotFoundError("Book associated with borrowing not found.");
+    // if(!book)
+    //     throw new NotFoundError("Book associated with borrowing not found.");
 
-    borrowRecord.returnedAt = new Date().toISOString();
+    // borrowRecord.returnedAt = new Date().toISOString();
 
-    book.availableCopies++;
+    // book.availableCopies++;
 
-    await writeJSON(BORROWING_FILE_PATH, borrowings);
-    await writeJSON(BOOK_FILE_PATH, books);
+    // await writeJSON(BORROWING_FILE_PATH, borrowings);
+    // await writeJSON(BOOK_FILE_PATH, books);
 
-    return borrowRecord;
+    // return borrowRecord;
 }
 
 
 
 async function getBorrowings(role, filters){
     role = role.toLowerCase();
+
+    //-------------------------------------------------------------------------------
+
+    // PSQL Logic
+
+    //-------------------------------------------------------------------------------
     
     if(role !== "user" && role !== "admin")
         throw new ValidationError("Allowed roles: User, Admin.")
