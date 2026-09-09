@@ -2,7 +2,7 @@ import * as bookService from "../services/bookService.js";
 // import * as borrowingService from "../services/borrowingService.js";
 
 
-async function getAllBooks(req, res){
+async function getBooks(req, res){
     const filters = {...req.query,
         sortBy: req.query.sortBy ?? "title",
         order: req.query.order ?? "asc",
@@ -10,7 +10,7 @@ async function getAllBooks(req, res){
         limit: Number(req.query.limit ?? 10)
     };
 
-    const books = await bookService.getAllBooks(filters);
+    const books = await bookService.getBooks(filters);
 
     res.status(200).json(books);
 }
@@ -82,4 +82,4 @@ async function deleteBook(req, res) {
 
 
 
-export {getAllBooks, getBookById, createBook, updateBook, deleteBook};
+export {getBooks, getBookById, createBook, updateBook, deleteBook};

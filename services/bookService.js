@@ -1,5 +1,8 @@
 import path from "path"
 import { readJSON, writeJSON } from "../utils/fileHelper.js";
+
+import pool from "../utils/db.js";
+
 import ValidationError from "../errors/ValidationError.js";
 import NotFoundError from "../errors/NotFoundError.js";
 import ConflictError from "../errors/ConflictError.js";
@@ -82,65 +85,125 @@ function validatePageAndLimit(page, limit){
 //PUBLIC APIS
 
 //Get All Books
-async function getAllBooks(filters){
-    const books = await readJSON(BOOK_FILE_PATH);
+async function getBooks(filters){
+    // const books = await readJSON(BOOK_FILE_PATH);
 
     const page = filters.page;
     const limit = filters.limit;
 
     validatePageAndLimit(page, limit);
 
-    //filtering
-    const title = filters.title?.toLowerCase();
-    const author = filters.author?.toLowerCase();
-    const category = filters.category?.toLowerCase();
-    
-    const filteredBooks = books.filter(book => {
-        if(title && !book.title.toLowerCase().includes(title)) return false;
-        if(author && !book.author.toLowerCase().includes(author)) return false;
-        if(category && !book.category.toLowerCase().includes(category)) return false;
+    //=========================================================================================================
 
-        return true;
-    });
-    
-    //sorting
-    const sortBy = filters.sortBy.toLowerCase();
+    const conditions = [];
+    const values = [];
 
-    const validSortFields = ["title", "author", "category", "totalcopies", "availablecopies"];
-
-    if(!validSortFields.includes(sortBy)){
-        throw new BusinessRuleError(`Cannot sort on "${filters.sortBy}". Available sortBy options: title, author, category, totalCopies, availablecopies.`)
+    if(filters.title){
+        conditions.push(`title ILIKE $${values.length + 1}`);
+        values.push(`%${filters.title}%`);
     }
 
-    const order = filters.order.toLowerCase();
-
-    if(!["asc", "desc"].includes(order)){
-        throw new BusinessRuleError(`Cannot sort in "${filters.order}" order! Available order options: asc, desc.`);
+    if(filters.author){
+        conditions.push(`author ILIKE $${values.length + 1}`);
+        values.push(`%${filters.author}%`);
     }
 
-    filteredBooks.sort((book1, book2) => {
-        if(sortBy === "totalcopies"){
-            return order === "asc" ? book1.totalCopies - book2.totalCopies : book2.totalCopies - book1.totalCopies;
-        }
+    if(filters.category){
+        conditions.push(`category ILIKE $${values.length + 1}`);
+        values.push(`%${filters.category}%`);
+    }
 
-        if(sortBy === "availablecopies"){
-            return order === "asc" ? book1.availableCopies - book2.availableCopies : book2.availableCopies - book1.availableCopies;
-        }
+    const sortColumns = {
+        title: "title",
+        author: "author",
+        category: "category",
+        totalcopies: "total_copies",
+        availablecopies: "available_copies"
+    };
 
-        return order === "asc" ? book1[sortBy].localeCompare(book2[sortBy]) : book2[sortBy].localeCompare(book1[sortBy]);
-    });
+    const sortBy = filters.sortBy ?? "title";
+    const order = filters.order ?? "asc";
 
-    //paginating
-    const total = filteredBooks.length;
-    
+    const sortColumn = sortColumns[sortBy.toLowerCase()] ?? "title";
+
+    const sortOrder = order.toLowerCase() === "desc" ? "DESC" : "ASC";
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+    const countResult = await pool.query(
+        `SELECT COUNT(*) FROM books ${whereClause}`, 
+        values
+    );
+
+    const total = Number(countResult.rows[0].count);
+
     const totalPages = Math.ceil(total / limit);
 
-    const offset = (page-1) * limit;
+    const offset = (page - 1) * limit;
 
-    const data = filteredBooks.slice(offset, offset + limit);
+    const dataResults = await pool.query(
+        `SELECT * FROM books ${whereClause} 
+        ORDER BY ${sortColumn} ${sortOrder}, id ASC 
+        LIMIT $${values.length + 1} OFFSET $${values.length + 2}`, 
+
+        [...values, limit, offset]
+    );
+
+
+
+    //==JSON=======================================================================================================
+
+    //filtering
+    // const title = filters.title?.toLowerCase();
+    // const author = filters.author?.toLowerCase();
+    // const category = filters.category?.toLowerCase();
+    
+    // const filteredBooks = books.filter(book => {
+    //     if(title && !book.title.toLowerCase().includes(title)) return false;
+    //     if(author && !book.author.toLowerCase().includes(author)) return false;
+    //     if(category && !book.category.toLowerCase().includes(category)) return false;
+
+    //     return true;
+    // });
+    
+    // //sorting
+    // const sortBy = filters.sortBy.toLowerCase();
+
+    // const validSortFields = ["title", "author", "category", "totalcopies", "availablecopies"];
+
+    // if(!validSortFields.includes(sortBy)){
+    //     throw new BusinessRuleError(`Cannot sort on "${filters.sortBy}". Available sortBy options: title, author, category, totalCopies, availablecopies.`)
+    // }
+
+    // const order = filters.order.toLowerCase();
+
+    // if(!["asc", "desc"].includes(order)){
+    //     throw new BusinessRuleError(`Cannot sort in "${filters.order}" order! Available order options: asc, desc.`);
+    // }
+
+    // filteredBooks.sort((book1, book2) => {
+    //     if(sortBy === "totalcopies"){
+    //         return order === "asc" ? book1.totalCopies - book2.totalCopies : book2.totalCopies - book1.totalCopies;
+    //     }
+
+    //     if(sortBy === "availablecopies"){
+    //         return order === "asc" ? book1.availableCopies - book2.availableCopies : book2.availableCopies - book1.availableCopies;
+    //     }
+
+    //     return order === "asc" ? book1[sortBy].localeCompare(book2[sortBy]) : book2[sortBy].localeCompare(book1[sortBy]);
+    // });
+
+    // //paginating
+    // const total = filteredBooks.length;
+    
+    // const totalPages = Math.ceil(total / limit);
+
+    // const offset = (page-1) * limit;
+
+    // const data = filteredBooks.slice(offset, offset + limit);
 
     return {
-        data,
+        data: dataResults.rows,
         pagination: {
             page,
             limit,
@@ -303,4 +366,4 @@ async function returnBook(id){
 
 
 
-export {getAllBooks, findBookById, addBook, updateBook, deleteBook, borrowBook, returnBook};
+export {getBooks, findBookById, addBook, updateBook, deleteBook, borrowBook, returnBook};

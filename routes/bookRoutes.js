@@ -9,7 +9,7 @@ const router = express.Router();
 
 router.get(
     "/",
-    asyncHandler(bookController.getAllBooks)
+    asyncHandler(bookController.getBooks)
 );  
 
 // router.get(
