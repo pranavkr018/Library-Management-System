@@ -25,7 +25,7 @@ async function getBorrowings(req, res){
     const role = req.user.role;
     const filters = {
         ...req.query,
-        borrowerId: role === "user" ? userId : req.query.borrowerId ? Number(req.query.borrowerId) : undefined,
+        borrowerId: role === "user" ? userId : req.query.borrowerId !== undefined ? Number(req.query.borrowerId) : undefined,
         sortBy: req.query.sortBy ?? "borrowedAt",
         order: req.query.order ?? "asc",
         page: Number(req.query.page ?? 1),

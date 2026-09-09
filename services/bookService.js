@@ -1,6 +1,3 @@
-import path from "path"
-import { readJSON, writeJSON } from "../utils/fileHelper.js";
-
 import pool from "../utils/db.js";
 
 import ValidationError from "../errors/ValidationError.js";
@@ -8,27 +5,16 @@ import NotFoundError from "../errors/NotFoundError.js";
 import ConflictError from "../errors/ConflictError.js";
 import BusinessRuleError from "../errors/BusinessRuleError.js";
 
-const BOOK_FILE_PATH = path.resolve("data", "books.json");
-
 
 //----------------------------------------------------------------
 //HELPER FUNCTIONS
-
-function generateId(books){
-    if(books.length === 0) return 1;
-    return Math.max(...books.map(book => book.id)) + 1;
-}
 
 function validateId(id){
     if(!Number.isInteger(id) || id <= 0)
         throw new ValidationError("Book ID must be a positive integer.");
 }
 
-function normalize(text){
-    return text.trim().toLowerCase();
-}
-
-function sanitizeBook(book){
+function sanitizeBookData(book){
     return {
         ...book,
         title: book.title.trim(),
@@ -37,35 +23,28 @@ function sanitizeBook(book){
     };
 }
 
-function findDuplicateBook(books, book, currId){
-    return books.find(b => b.id !== currId 
-        && normalize(b.title) === normalize(book.title) 
-        && normalize(b.author) === normalize(book.author) 
-        && normalize(b.category) === normalize(book.category)
-    );
-}
+function validateBookData(book){
+    if("id" in book || "availableCopies" in book)
+        throw new ValidationError("Book Id and Available Copies cannot be created or modified.");
 
-function validateBook(book){
-    if(typeof book.title !== "string" || book.title.trim().length === 0)
-        throw new ValidationError("Title is required.");
-    
-    if(typeof book.author !== "string" || book.author.trim().length === 0)
-        throw new ValidationError("Author is required.");
-    
-    if(typeof book.category !== "string" || book.category.trim().length === 0)
-        throw new ValidationError("Category is required.");
-    
-    if(!Number.isInteger(book.totalCopies) || book.totalCopies <= 0)
-        throw new ValidationError("Total copies must be a positive integer.");
-}
+    const allowedFields = ["title", "author", "category", "totalCopies"];
 
+    Object.keys(book).forEach(field => {
+        if(!allowedFields.includes(field)){
+            throw new ValidationError(`Field ${field} is unavailable to create or modify.`);
+        }
 
-function validateUpdateData(updatedData){
-    if("id" in updatedData)
-        throw new ValidationError("Book ID cannot be modified.");
-    
-    if("availableCopies" in updatedData)
-        throw new ValidationError("Available copies cannot be modified directly.");
+        if(field === "totalCopies"){
+            if(!Number.isInteger(book[field]) || book[field] < 0)
+                throw new ValidationError("Total copies must be a non-negative integer.");
+        }
+        else if(typeof book[field] !== "string" || book[field].trim().length === 0){
+            throw new ValidationError(`Field ${field} contains inappropriate or missing data.`);
+        }
+    });
+
+    if(Object.keys(book).length === 0)
+        throw new ValidationError("No valid fields to create or modify.");
 }
 
 function validatePageAndLimit(page, limit){
@@ -84,16 +63,12 @@ function validatePageAndLimit(page, limit){
 
 //PUBLIC APIS
 
-//Get All Books
+//Get Books
 async function getBooks(filters){
-    // const books = await readJSON(BOOK_FILE_PATH);
-
     const page = filters.page;
     const limit = filters.limit;
 
     validatePageAndLimit(page, limit);
-
-    //=========================================================================================================
 
     const conditions = [];
     const values = [];
@@ -117,16 +92,16 @@ async function getBooks(filters){
         title: "title",
         author: "author",
         category: "category",
-        totalcopies: "total_copies",
-        availablecopies: "available_copies"
+        totalCopies: "total_copies",
+        availableCopies: "available_copies"
     };
 
     const sortBy = filters.sortBy ?? "title";
     const order = filters.order ?? "asc";
 
-    const sortColumn = sortColumns[sortBy.toLowerCase()] ?? "title";
+    const sortColumn = sortColumns[sortBy] ?? "title";
 
-    const sortOrder = order.toLowerCase() === "desc" ? "DESC" : "ASC";
+    const sortOrder = order === "desc" ? "DESC" : "ASC";
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
@@ -142,65 +117,13 @@ async function getBooks(filters){
     const offset = (page - 1) * limit;
 
     const dataResults = await pool.query(
-        `SELECT * FROM books ${whereClause} 
+        `SELECT id, title, author, category, total_copies AS "totalCopies", available_copies AS "availableCopies" 
+        FROM books ${whereClause} 
         ORDER BY ${sortColumn} ${sortOrder}, id ASC 
         LIMIT $${values.length + 1} OFFSET $${values.length + 2}`, 
 
         [...values, limit, offset]
     );
-
-
-
-    //==JSON=======================================================================================================
-
-    //filtering
-    // const title = filters.title?.toLowerCase();
-    // const author = filters.author?.toLowerCase();
-    // const category = filters.category?.toLowerCase();
-    
-    // const filteredBooks = books.filter(book => {
-    //     if(title && !book.title.toLowerCase().includes(title)) return false;
-    //     if(author && !book.author.toLowerCase().includes(author)) return false;
-    //     if(category && !book.category.toLowerCase().includes(category)) return false;
-
-    //     return true;
-    // });
-    
-    // //sorting
-    // const sortBy = filters.sortBy.toLowerCase();
-
-    // const validSortFields = ["title", "author", "category", "totalcopies", "availablecopies"];
-
-    // if(!validSortFields.includes(sortBy)){
-    //     throw new BusinessRuleError(`Cannot sort on "${filters.sortBy}". Available sortBy options: title, author, category, totalCopies, availablecopies.`)
-    // }
-
-    // const order = filters.order.toLowerCase();
-
-    // if(!["asc", "desc"].includes(order)){
-    //     throw new BusinessRuleError(`Cannot sort in "${filters.order}" order! Available order options: asc, desc.`);
-    // }
-
-    // filteredBooks.sort((book1, book2) => {
-    //     if(sortBy === "totalcopies"){
-    //         return order === "asc" ? book1.totalCopies - book2.totalCopies : book2.totalCopies - book1.totalCopies;
-    //     }
-
-    //     if(sortBy === "availablecopies"){
-    //         return order === "asc" ? book1.availableCopies - book2.availableCopies : book2.availableCopies - book1.availableCopies;
-    //     }
-
-    //     return order === "asc" ? book1[sortBy].localeCompare(book2[sortBy]) : book2[sortBy].localeCompare(book1[sortBy]);
-    // });
-
-    // //paginating
-    // const total = filteredBooks.length;
-    
-    // const totalPages = Math.ceil(total / limit);
-
-    // const offset = (page-1) * limit;
-
-    // const data = filteredBooks.slice(offset, offset + limit);
 
     return {
         data: dataResults.rows,
@@ -213,89 +136,123 @@ async function getBooks(filters){
     };
 }
 
-//Add a Book
-async function addBook(book){
-    validateBook(book);
-    
-    const books = await readJSON(BOOK_FILE_PATH);
-
-    const existingBook = findDuplicateBook(books, book);
-
-    if(existingBook){
-        existingBook.totalCopies += book.totalCopies;
-        existingBook.availableCopies += book.totalCopies;
-
-        await writeJSON(BOOK_FILE_PATH, books);
-        
-        return existingBook;
-    }
-    
-    const newBook = sanitizeBook({
-        id: generateId(books),
-        title: book.title,
-        author: book.author,
-        category: book.category,
-        totalCopies: book.totalCopies,
-        availableCopies: book.totalCopies
-    });
-
-    books.push(newBook);
-    
-    await writeJSON(BOOK_FILE_PATH, books);
-    
-    return newBook;
-}
-
 //Find Book by Id
 async function findBookById(id){
     validateId(id);
 
-    const books = await readJSON(BOOK_FILE_PATH);
-    const targetBook = books.find(book => book.id === id);
+    const bookResult = await pool.query(
+        `SELECT id, title, author, category, total_copies AS "totalCopies", available_copies AS "availableCopies" 
+        FROM books WHERE id = $1`, 
+        [id]
+    );
 
-    if(!targetBook){
-        throw new NotFoundError("Book not found.")
+    if(bookResult.rows.length === 0){
+        throw new NotFoundError("Book not found.");
     }
 
-    return targetBook;
+    return {
+        data: bookResult.rows[0]
+    };
+}
 
+//Create a Book
+async function createBook(book){
+    if("id" in book || "availableCopies" in book)
+        throw new ValidationError("Book id and Available copies cannot be created.")
+
+    validateBookData(book);
+
+    const sanitizedBook = sanitizeBookData(book);
+
+    const bookData = [
+        sanitizedBook.title, 
+        sanitizedBook.author, 
+        sanitizedBook.category, 
+        sanitizedBook.totalCopies
+    ];
+
+    try{
+        const newBookResult = await pool.query(
+            `INSERT INTO books (title, author, category, total_copies, available_copies) 
+            VALUES ($1, $2, $3, $4, $4) 
+            RETURNING id, title, author, category, total_copies AS "totalCopies", available_copies AS "availableCopies"`, 
+
+            bookData
+        );
+    
+        return newBookResult.rows[0];
+    }
+    catch(error){
+        if(error.code === "23505" && error.constraint === "unique_book"){
+            throw new ConflictError("Book already exists. Modify the existing book instead.")
+        }
+
+        throw error;
+    }
 }
 
 //Update Book
-async function updateBook(id, updatedData){
+async function updateBook(id, data){
     validateId(id);
-    validateUpdateData(updatedData);
 
-    const books = await readJSON(BOOK_FILE_PATH);
-    const targetBook = books.find(book => book.id === id);    // not using findBookById() because we want the reference of the target book in books, not a copy of the target book.
+    const client = await pool.connect();
 
-    if(!targetBook)
-        throw new NotFoundError("Book not found.");
+    try{
+        await client.query("BEGIN");
 
-    const updatedBook = sanitizeBook({
-        ...targetBook, 
-        ...updatedData,
-    });
+        const bookResult = await client.query(
+            `SELECT 
+            title, author, category, total_copies as "totalCopies", available_copies as "availableCopies" 
+            FROM books WHERE id = $1 
+            FOR UPDATE`, 
+            [id]
+        );
 
-    validateBook(updatedBook);
+        if(bookResult.rows.length === 0){
+            throw new NotFoundError("Book not found.");
+        }
 
-    const borrowedCopies = targetBook.totalCopies - targetBook.availableCopies;
+        validateBookData(data);
 
-    if(updatedBook.totalCopies < borrowedCopies)
-        throw new BusinessRuleError("Total copies cannot be less than borrowed copies.");
+        const sanitizedData = sanitizeBookData(data);
 
-    const duplicate = findDuplicateBook(books, updatedBook, id);
+        const updateData = {
+            ...bookResult.rows[0],
+            ...sanitizedData
+        }
+        
+        const borrowedCopies = bookResult.rows[0].totalCopies - bookResult.rows[0].availableCopies;
 
-    if(duplicate)
-        throw new ConflictError("Updating this book would create a duplicate.");
+        if("totalCopies" in data && updateData.totalCopies < borrowedCopies){
+            throw new BusinessRuleError("Total copies cannot be less than borrowed copies.");
+        }
 
-    updatedBook.availableCopies = updatedBook.totalCopies - borrowedCopies;
+        const newAvailableCopies = updateData.totalCopies - borrowedCopies;
 
-    Object.assign(targetBook, updatedBook);
-    
-    await writeJSON(BOOK_FILE_PATH, books);
+        const updatedBook = await client.query(
+            `UPDATE books SET title = $1, author = $2, category = $3, total_copies = $4, available_copies = $5 
+            WHERE id = $6 
+            RETURNING id, title, author, category, total_copies AS "totalCopies", available_copies AS "availableCopies"`, 
 
-    return targetBook;
+            [updateData.title, updateData.author, updateData.category, updateData.totalCopies, newAvailableCopies, id]
+        );
+
+        await client.query("COMMIT");
+
+        return updatedBook.rows[0];
+    }
+    catch(error){
+        await client.query("ROLLBACK");
+
+        if(error.code === "23505" && error.constraint === "unique_book"){
+            throw new ConflictError("Book already exists.")
+        }
+
+        throw error;
+    }
+    finally{
+        client.release();
+    }
 }
 
 
@@ -303,67 +260,49 @@ async function updateBook(id, updatedData){
 async function deleteBook(id){
     validateId(id);
 
-    const books = await readJSON(BOOK_FILE_PATH);;
+    const client = await pool.connect();
 
-    const targetBook = books.find(book => book.id === id);
+    try{
+        await client.query("BEGIN");
 
-    if(!targetBook) 
-        throw new NotFoundError("Book not found.");
+        const bookCheck = await client.query(
+            `SELECT 1 FROM books WHERE id = $1 FOR UPDATE`, 
+            [id]
+        );
 
-    if(targetBook.availableCopies !== targetBook.totalCopies)
-        throw new BusinessRuleError("Book cannot be deleted because some copies are currently borrowed.");
+        if(bookCheck.rows.length === 0){
+            throw new NotFoundError("Book not found.");
+        }
 
-    const updatedBooks = books.filter(book => book.id !== id);
+        const borrowingHistoryCheck = await client.query(
+            `SELECT EXISTS (SELECT 1 FROM borrowings WHERE book_id = $1)`, 
+            [id]
+        );
 
-    await writeJSON(BOOK_FILE_PATH, updatedBooks);
+        if(borrowingHistoryCheck.rows[0].exists){
+            throw new ConflictError("Book cannot be deleted because it was borrowed at least once");
+        }
 
-    return targetBook;
-}
+        const deletedBook = await client.query(
+            `DELETE FROM books WHERE id = $1 
+            RETURNING id, title, author, category, total_copies AS "totalCopies", available_copies AS "availableCopies"`, 
+            [id]
+        );
 
+        await client.query("COMMIT");
 
-//Borrow a book
-async function borrowBook(id){
-    validateId(id);
+        return deletedBook.rows[0];
+    }
+    catch(error){
+        await client.query("ROLLBACK");
 
-    const books = await readJSON(BOOK_FILE_PATH);
-
-    const targetBook = books.find(book => book.id === id);
-
-    if(!targetBook) 
-        throw new NotFoundError("Book not found.");
-
-    if(targetBook.availableCopies === 0)
-        throw new BusinessRuleError("Book cannot be borrowed because no copies are currently available.");
-
-    targetBook.availableCopies--;
-
-    await writeJSON(BOOK_FILE_PATH, books);
-
-    return targetBook;
-}
-
-
-//Return a book
-async function returnBook(id){
-    validateId(id);
-
-    const books = await readJSON(BOOK_FILE_PATH);
-
-    const targetBook = books.find(book => book.id === id);
-
-    if(!targetBook) 
-        throw new NotFoundError("Book not found.");
-
-    if(targetBook.availableCopies === targetBook.totalCopies)
-        throw new BusinessRuleError("Book cannot be returned because no copies are currently borrowed.");
-
-    targetBook.availableCopies++;
-
-    await writeJSON(BOOK_FILE_PATH, books);
-
-    return targetBook;
+        throw error;
+    }
+    finally{
+        client.release();
+    }
 }
 
 
 
-export {getBooks, findBookById, addBook, updateBook, deleteBook, borrowBook, returnBook};
+export {getBooks, findBookById, createBook, updateBook, deleteBook};

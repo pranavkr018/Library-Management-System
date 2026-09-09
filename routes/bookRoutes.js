@@ -12,12 +12,6 @@ router.get(
     asyncHandler(bookController.getBooks)
 );  
 
-// router.get(
-//     "/borrowings",
-//     authMiddleware,
-//     asyncHandler(bookController.getBorrowings)
-// );
-
 router.get(
     "/:id",
     asyncHandler(bookController.getBookById)
@@ -31,18 +25,6 @@ router.post(
     authorize("admin"),
     asyncHandler(bookController.createBook)
 );
-
-// router.post(
-//     "/:id/borrow",
-//     authMiddleware,
-//     asyncHandler(bookController.borrowBook)
-// );
-
-// router.post(
-//     "/:id/return",
-//     authMiddleware,
-//     asyncHandler(bookController.returnBook)
-// );
 
 
 

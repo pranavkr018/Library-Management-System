@@ -1,4 +1,5 @@
 import "dotenv/config";
+import "./utils/globals.js"
 import express from "express";
 import authRoutes from "./routes/authRoutes.js";
 import bookRoutes from "./routes/bookRoutes.js";

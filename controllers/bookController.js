@@ -1,5 +1,4 @@
 import * as bookService from "../services/bookService.js";
-// import * as borrowingService from "../services/borrowingService.js";
 
 
 async function getBooks(req, res){
@@ -24,7 +23,7 @@ async function getBookById(req, res) {
 }
 
 async function createBook(req, res){
-    const newBook = await bookService.addBook(req.body);
+    const newBook = await bookService.createBook(req.body);
     
     res.status(201).json(newBook);
 }
@@ -44,41 +43,6 @@ async function deleteBook(req, res) {
 
     res.status(200).json(deletedBook);
 }
-
-// async function borrowBook(req, res){
-//     const bookId = Number(req.params.id);
-//     const userId = req.user.id;
-
-//     const borrowedRecord = await borrowingService.borrowBook(bookId, userId);
-
-//     res.status(201).json(borrowedRecord);
-// }
-
-// async function returnBook(req, res){
-//     const bookId = Number(req.params.id);
-//     const userId = req.user.id;
-
-//     const returnedRecord = await borrowingService.returnBook(bookId, userId);
-
-//     res.status(200).json(returnedRecord);
-// }
-
-// async function getBorrowings(req, res){
-//     const userId = req.user.id;
-//     const role = req.user.role;
-//     const filters = {
-//         ...req.query,
-//         borrowerId: role === "user" ? userId : Number(req.query.borrowerId),
-//         sortBy: req.query.sortBy ?? "borrowedAt",
-//         order: req.query.order ?? "asc",
-//         page: Number(req.query.page ?? 1),
-//         limit: Number(req.query.limit ?? 10)
-//     };
-
-//     const borrowingHistory = await borrowingService.getBorrowings(userId, role, filters);
-
-//     res.status(200).json(borrowingHistory);
-// }
 
 
 
