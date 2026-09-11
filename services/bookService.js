@@ -99,8 +99,7 @@ async function getBooks(filters){
     const sortBy = filters.sortBy ?? "title";
     const order = filters.order ?? "asc";
 
-    const sortColumn = sortColumns[sortBy] ?? "title";
-
+    const sortColumn = sortColumns[sortBy] ?? sortColumns.title;
     const sortOrder = order === "desc" ? "DESC" : "ASC";
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";

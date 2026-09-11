@@ -85,7 +85,9 @@ async function borrowBook(bookId, userId){
 
         await client.query("COMMIT");
 
-        return borrowingResult.rows[0];
+        return {
+            data: borrowingResult.rows[0]
+        };
     }
     catch(error){
         await client.query("ROLLBACK");
@@ -153,7 +155,9 @@ async function returnBook(borrowingId, userId){
 
         await client.query("COMMIT");
 
-        return borrowingUpdate.rows[0];
+        return {
+            data: borrowingUpdate.rows[0]
+        };
     }
     catch(error){
         await client.query("ROLLBACK");
@@ -167,106 +171,130 @@ async function returnBook(borrowingId, userId){
 
 
 
-async function getBorrowings(role, filters){
-    role = role.toLowerCase();
-
-    //-------------------------------------------------------------------------------
-
-    // PSQL Logic
-
-    //-------------------------------------------------------------------------------
-    
-    if(role !== "user" && role !== "admin")
-        throw new ValidationError("Allowed roles: User, Admin.")
-    
-    const active = filters.active?.toLowerCase();
-
-    if(active !== undefined && active !== "true" && active !== "false")
-        throw new ValidationError("Valid values for active: true, false, undefined");
-
-    const sortBy = filters.sortBy.toLowerCase();
-
-    const ValidSortFields = ["title", "author", "category", "totalcopies", "borrowedat", "returnedat"];
-
-    if(!ValidSortFields.includes(sortBy)){
-        throw new BusinessRuleError(
-            `Cannot sort on "${filters.sortBy}". Available sortBy options: title, author, category, totalCopies, borrowedAt, returnedAt.`
-        );
-
-    }
-
-    if(sortBy === "returnedat" && active !== "false"){
-        throw new BusinessRuleError(
-            "returnedAt can only be used for sorting when active=false."
-        );
-    }
-
-    const order = filters.order.toLowerCase();
-
-    if(!["asc", "desc"].includes(order)){
-        throw new BusinessRuleError(`Cannot sort in "${filters.order}" order! Available order options: asc, desc.`);
-    }
-
+async function getBorrowings(filters){
     const page = filters.page;
     const limit = filters.limit;
 
     validatePageAndLimit(page, limit);
 
-    const borrowings = await readJSON(BORROWING_FILE_PATH);
+    const conditions = [];
+    const values = [];
 
-    let borrowingHistory = borrowings;
-
-    if(filters.borrowerId){
+    if(filters.borrowerId !== undefined){
         validateId(filters.borrowerId, "Borrower Id");
 
-        borrowingHistory = borrowingHistory.filter(borrowing => borrowing.userId === filters.borrowerId);
+        conditions.push(`b.user_id = $${values.length + 1}`);
+        values.push(filters.borrowerId);
+    }
+
+    if(filters.active === "true"){
+        conditions.push(`b.returned_at IS NULL`);
+    }
+    else if(filters.active === "false"){
+        conditions.push(`b.returned_at IS NOT NULL`);
+    }
+
+    if(filters.title){
+        conditions.push(`bk.title ILIKE $${values.length + 1}`);
+        values.push(`%${filters.title}%`);
+    }
+
+    if(filters.author){
+        conditions.push(`bk.author ILIKE $${values.length + 1}`);
+        values.push(`%${filters.author}%`);
+    }
+
+    if(filters.category){
+        conditions.push(`bk.category ILIKE $${values.length + 1}`);
+        values.push(`%${filters.category}%`);
     }
     
-    if(active === "true"){
-        borrowingHistory = borrowingHistory.filter(borrowing => borrowing.returnedAt === null);
-    }else if(active === "false"){
-        borrowingHistory = borrowingHistory.filter(borrowing => borrowing.returnedAt !== null);
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    
+    const sortColumns = {
+        borrowedAt: "b.borrowed_at",
+        returnedAt: "b.returned_at",
+        title: "bk.title",
+        author: "bk.author",
+        category: "bk.category",
+        totalCopies: "bk.total_copies",
+        availableCopies: "bk.available_copies"
+    };
+
+    const sortBy = filters.sortBy ?? "borrowedAt";
+
+    if(sortBy === "returnedAt" && filters.active !== "false"){
+        throw new BusinessRuleError(
+            "returnedAt can only be used for sorting when active=false."
+        );
     }
+    
+    const sortColumn = sortColumns[sortBy];
+    
+    if(!sortColumn)
+        throw new ValidationError("Invalid sortBy field.")
 
-    const books = await readJSON(BOOK_FILE_PATH);
+    const order = filters.order ?? "asc";
 
-    borrowingHistory.forEach(borrowing => {
-        const book = books.find(book => book.id === borrowing.bookId);
-        borrowing.book = book;
-    });
+    if(order !== "asc" && order !== "desc")
+        throw new ValidationError("Order must be either asc or desc.")
+    
+    const sortOrder = order === "desc" ? "DESC" : "ASC";
 
-    //sorting
-    borrowingHistory.sort((bh1, bh2) => {
-        if(sortBy === "borrowedat"){
-            return order === "asc" ? bh1.borrowedAt.localeCompare(bh2.borrowedAt) : bh2.borrowedAt.localeCompare(bh1.borrowedAt);
-        }
+    const countResult = await pool.query(
+        `SELECT COUNT(*) 
+        FROM borrowings b 
+        INNER JOIN books bk 
+        ON b.book_id = bk.id 
+        ${whereClause}`, 
+        values
+    );
 
-        if(sortBy === "returnedat"){
-            return order === "asc" ? bh1.returnedAt.localeCompare(bh2.returnedAt) : bh2.returnedAt.localeCompare(bh1.returnedAt);
-        }
-
-        if(sortBy === "totalcopies"){
-            return order === "asc" ? bh1.book.totalCopies - bh2.book.totalCopies : bh2.book.totalCopies - bh1.book.totalCopies;
-        }
-
-        return order === "asc" ? bh1.book[sortBy].localeCompare(bh2.book[sortBy]) : bh2.book[sortBy].localeCompare(bh1.book[sortBy]);
-    });
-
-    //pagination
-    const total = borrowingHistory.length;
+    const total = Number(countResult.rows[0].count);
 
     const totalPages = Math.ceil(total / limit);
 
     const offset = (page - 1) * limit;
 
-    const data = borrowingHistory.slice(offset, offset + limit);
+    const dataResult = await pool.query(
+        `SELECT 
+            b.id, b.book_id AS "bookId", b.user_id AS "userId", b.borrowed_at AS "borrowedAt", b.returned_at AS "returnedAt", 
+            bk.title, bk.author, bk.category, bk.total_copies AS "totalCopies", bk.available_copies AS "availableCopies" 
+        FROM borrowings b 
+        INNER JOIN books bk 
+        ON b.book_id = bk.id 
+        ${whereClause} 
+        ORDER BY ${sortColumn} ${sortOrder}, b.id ASC 
+        LIMIT $${values.length + 1} 
+        OFFSET $${values.length + 2}`, 
+
+        [...values, limit, offset]
+    );
+
+    const data = dataResult.rows.map(row => (
+        {
+            id: row.id, 
+            userId: row.userId, 
+            bookId: row.bookId, 
+            borrowedAt: row.borrowedAt, 
+            returnedAt: row.returnedAt, 
+            book: {
+                id: row.bookId, 
+                title: row.title, 
+                author: row.author, 
+                category: row.category,
+                totalCopies: row.totalCopies, 
+                availableCopies: row.availableCopies
+            }
+        }
+    ));
 
     return {
-        data,
+        data, 
         pagination: {
-            page,
-            limit,
-            total,
+            page, 
+            limit, 
+            total, 
             totalPages
         }
     };

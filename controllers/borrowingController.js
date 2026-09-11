@@ -31,7 +31,7 @@ async function getBorrowings(req, res){
         page: Number(req.query.page ?? 1),
         limit: Number(req.query.limit ?? 10)
     };
-    const borrowingHistory = await borrowingService.getBorrowings(role, filters);
+    const borrowingHistory = await borrowingService.getBorrowings(filters);
 
     res.status(200).json(borrowingHistory);
 }
