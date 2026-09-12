@@ -10,7 +10,7 @@ function authMiddleware(req, res, next){
     const token = authHeader.split(" ")[1];
 
     try{
-        const decoded = jwt.verify(     // to prevent jwt to throw it's own error, we wrap it in a try-catch to wrap our error handling.
+        const decoded = jwt.verify(     // catching JWT's library-specific errors and translating them into our application's AuthenticationError.
             token,
             process.env.JWT_SECRET_KEY
         );

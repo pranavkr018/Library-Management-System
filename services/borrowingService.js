@@ -9,9 +9,6 @@ import BusinessRuleError from "../errors/BusinessRuleError.js";
 import ConflictError from "../errors/ConflictError.js";
 import AuthorizationError from "../errors/AuthorizationError.js";
 
-const BOOK_FILE_PATH = path.resolve("data", "books.json");
-const BORROWING_FILE_PATH = path.resolve("data", "borrowings.json");
-
 
 
 //-----------------Helper functions----------------------------------------------------------------
@@ -47,7 +44,9 @@ async function borrowBook(bookId, userId){
         await client.query("BEGIN");
 
         const bookResult = await client.query(
-            `SELECT * FROM books WHERE id = $1 FOR UPDATE`, 
+            `SELECT 
+            id, title, author, category, total_copies AS "totalCopies", available_copies AS "availableCopies" 
+            FROM books WHERE id = $1 FOR UPDATE`, 
             [bookId]
         );
 
@@ -57,7 +56,7 @@ async function borrowBook(bookId, userId){
 
         const book = bookResult.rows[0];
 
-        if(book.available_copies === 0){
+        if(book.availableCopies === 0){
             throw new BusinessRuleError("No copies are available to borrow.");
         }
 
@@ -79,7 +78,7 @@ async function borrowBook(bookId, userId){
 
         const borrowingResult = await client.query(
             `INSERT INTO borrowings (user_id, book_id, borrowed_at) VALUES ($1, $2, NOW()) 
-            RETURNING id, title, author, category, total_copies AS "totalCopies", available_copies AS "availableCopies"`, 
+            RETURNING id, book_id AS "bookId", user_id AS "userId", borrowed_at AS "borrowedAt", returned_at AS "returnedAt"`, 
             [userId, bookId]
         );
 
@@ -115,7 +114,9 @@ async function returnBook(borrowingId, userId){
         await client.query("BEGIN");
 
         const borrowingResult = await client.query(
-            `SELECT * FROM borrowings WHERE id = $1 FOR UPDATE`,
+            `SELECT 
+            id, book_id AS "bookId", user_id AS "userId", borrowed_at AS "borrowedAt", returned_at AS "returnedAt" 
+            FROM borrowings WHERE id = $1 FOR UPDATE`,
             [borrowingId]
         );
 
@@ -125,17 +126,19 @@ async function returnBook(borrowingId, userId){
 
         const borrowing = borrowingResult.rows[0];
         
-        if(borrowing.user_id !== userId){
+        if(borrowing.userId !== userId){
             throw new AuthorizationError("You are unauthorized to close this borrowing.")
         }
 
-        if(borrowing.returned_at !== null){
+        if(borrowing.returnedAt !== null){
             throw new BusinessRuleError("Book already returned.")
         }
 
         const bookResult = await client.query(
-            `SELECT * FROM books WHERE id = $1 FOR UPDATE`,
-            [borrowing.book_id]
+            `SELECT 
+            id, title, author, category, total_copies AS "totalCopies", available_copies AS "availableCopies" 
+            FROM books WHERE id = $1 FOR UPDATE`,
+            [borrowing.bookId]
         );
 
         if(bookResult.rows.length === 0){
@@ -144,13 +147,13 @@ async function returnBook(borrowingId, userId){
 
         const borrowingUpdate = await client.query(
             `UPDATE borrowings SET returned_at = NOW() WHERE id = $1 
-            RETURNING id, title, author, category, total_copies AS "totalCopies", available_copies AS "availableCopies"`, 
+            RETURNING id, book_id AS "bookId", user_id AS "userId", borrowed_at AS "borrowedAt", returned_at AS "returnedAt"`, 
             [borrowingId]
         );
 
         await client.query(
             `UPDATE books SET available_copies = available_copies + 1 WHERE id = $1`, 
-            [borrowing.book_id]
+            [borrowing.bookId]
         );
 
         await client.query("COMMIT");

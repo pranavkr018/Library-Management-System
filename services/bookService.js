@@ -213,12 +213,12 @@ async function updateBook(id, data){
 
         validateBookData(data);
 
-        const sanitizedData = sanitizeBookData(data);
-
-        const updateData = {
+        const mergedData = {
             ...bookResult.rows[0],
-            ...sanitizedData
+            ...data
         }
+
+        const updateData = sanitizeBookData(mergedData);
         
         const borrowedCopies = bookResult.rows[0].totalCopies - bookResult.rows[0].availableCopies;
 
